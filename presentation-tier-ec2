@@ -19,7 +19,6 @@ APP_TIER_ALB_URL="Application-tier-LoadBalancer-666692420.us-east-1.elb.amazonaw
 API_URL="/api"
 # Clone the repository as ec2-user
 
-
 cd /home/ec2-user
 sudo -u ec2-user git clone $REPO_URL
 cd react-node-mysql-app
@@ -38,7 +37,7 @@ sudo -u ec2-user npm run build
 sudo cp -r dist /usr/share/nginx/html/
 # Update NGINX configuration
 NGINX_CONF="/etc/nginx/nginx.conf"
-SERVER_NAME="www.devopsbhargavi.xyz"     # Replace with your actual domain name
+SERVER_NAME="devopsbhargavi.xyz www.devopsbhargavi.xyz"  # Replace with your actual domain name (both non-www and www)
 # Backup existing NGINX configuration
 sudo cp $NGINX_CONF ${NGINX_CONF}.bak
 # Write new NGINX configuration
@@ -54,7 +53,6 @@ http {
 include /etc/nginx/mime.types;
 default_type application/octet-stream;
 log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-
 '\$status \$body_bytes_sent "\$http_referer" '
 '"\$http_user_agent" "\$http_x_forwarded_for"';
 
@@ -71,7 +69,7 @@ EOL
 sudo tee /etc/nginx/conf.d/presentation-tier.conf > /dev/null <<EOL
 server {
 listen 80;
-server_name devopsbhargavi.xyz;
+server_name devopsbhargavi.xyz www.devopsbhargavi.xyz;  # Handle both non-www and www versions of the domain
 root /usr/share/nginx/html/dist;
 index index.html index.htm;
 #health check
