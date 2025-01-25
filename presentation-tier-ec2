@@ -15,7 +15,7 @@ REPO_URL="https://github.com/suneelprojects/react-node-mysql-app.git"
 BRANCH_NAME="feature/add-logging"
 REPO_DIR="/home/ec2-user/react-node-mysql-app/frontend"
 ENV_FILE="$REPO_DIR/.env"
-APP_TIER_ALB_URL="Application-tier-LoadBalancer-666692420.us-east-1.elb.amazonaws.com" # Replace with your actual alb endpoint
+APP_TIER_ALB_URL="Application-tier-Loadbalancer-612772853.us-east-1.elb.amazonaws.com"  # Changed: ALB URL used
 API_URL="/api"
 # Clone the repository as ec2-user
 
@@ -37,7 +37,7 @@ sudo -u ec2-user npm run build
 sudo cp -r dist /usr/share/nginx/html/
 # Update NGINX configuration
 NGINX_CONF="/etc/nginx/nginx.conf"
-SERVER_NAME="devopsbhargavi.xyz www.devopsbhargavi.xyz"  # Replace with your actual domain name (both non-www and www)
+SERVER_NAME="devopsbhargavi.xyz"  # Replace with your actual domain name (both non-www and www)
 # Backup existing NGINX configuration
 sudo cp $NGINX_CONF ${NGINX_CONF}.bak
 # Write new NGINX configuration
@@ -68,28 +68,33 @@ EOL
 # Create a separate NGINX configuration file
 sudo tee /etc/nginx/conf.d/presentation-tier.conf > /dev/null <<EOL
 server {
-listen 80;
-server_name devopsbhargavi.xyz www.devopsbhargavi.xyz;  # Handle both non-www and www versions of the domain
-root /usr/share/nginx/html/dist;
-index index.html index.htm;
-#health check
-location /health {
-default_type text/html;
-return 200 "<!DOCTYPE html><p>Health check endpoint</p>\n";
-}
-location / {
-try_files \$uri /index.html;
-}
-location /api/ {
-proxy_pass $APP_TIER_ALB_URL;
-proxy_set_header Host \$host;
-proxy_set_header X-Real-IP \$remote_addr;
-proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto \$scheme;
-}
+    listen 80;
+    server_name devopsbhargavi.xyz www.devopsbhargavi.xyz;  # Handle both non-www and www versions of the domain
+    root /usr/share/nginx/html/dist;
+    index index.html index.htm;
+
+    # Health check endpoint
+    location /health {
+        default_type text/html;
+        return 200 "<!DOCTYPE html><p>Health check endpoint</p>\n";
+    }
+
+    # Frontend route for single-page application (SPA)
+    location / {
+        try_files \$uri /index.html;
+    }
+
+    # API route - Forward to application-tier ALB
+    location /api/ {
+        # Proxy to ALB URL (Application Load Balancer)
+        proxy_pass http://$APP_TIER_ALB_URL;  # Changed: Replaced with ALB URL for routing
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 }
 EOL
 
 # Restart NGINX to apply the new configuration
 sudo systemctl restart nginx
-
