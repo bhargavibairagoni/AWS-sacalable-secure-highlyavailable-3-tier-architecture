@@ -1,100 +1,26 @@
 #!/bin/bash
-# Update package list and install required packages
+# Update the package list and install NGINX
 sudo yum update -y
-sudo yum install -y git
-# Install Node.js (use NodeSource for the latest version)
-curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-sudo yum install -y nodejs
-# Install NGINX
-sudo yum install -y nginx
+sudo yum install nginx -y
 # Start and enable NGINX
 sudo systemctl start nginx
 sudo systemctl enable nginx
-# Define variables
-REPO_URL="https://github.com/suneelprojects/react-node-mysql-app.git"
-BRANCH_NAME="feature/add-logging"
-REPO_DIR="/home/ec2-user/react-node-mysql-app/frontend"
-ENV_FILE="$REPO_DIR/.env"
-APP_TIER_ALB_URL="http://Application-tier-Loadbalancer-612772853.us-east-1.elb.amazonaws.com"  # Changed: ALB URL used
-API_URL="/api"
-# Clone the repository as ec2-user
-
-cd /home/ec2-user
-sudo -u ec2-user git clone $REPO_URL
-cd react-node-mysql-app
-# Checkout to the specific branch
-sudo -u ec2-user git checkout $BRANCH_NAME
-cd frontend
-# Ensure ec2-user owns the directory
-sudo chown -R ec2-user:ec2-user /home/ec2-user/react-node-mysql-app
-# Create .env file with the API_URL
-echo "VITE_API_URL=\"$API_URL\"" >> "$ENV_FILE"
-# Install Node.js dependencies as ec2-user
-sudo -u ec2-user npm install
-# Build the frontend application as ec2-user
-sudo -u ec2-user npm run build
-# Copy the build files to the NGINX directory
-sudo cp -r dist /usr/share/nginx/html/
-# Update NGINX configuration
-NGINX_CONF="/etc/nginx/nginx.conf"
-SERVER_NAME="devopsbhargavi.xyz"  # Replace with your actual domain name (both non-www and www)
-# Backup existing NGINX configuration
-sudo cp $NGINX_CONF ${NGINX_CONF}.bak
-# Write new NGINX configuration
-sudo tee $NGINX_CONF > /dev/null <<EOL
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /run/nginx.pid;
-events {
-worker_connections 1024;
-}
-http {
-include /etc/nginx/mime.types;
-default_type application/octet-stream;
-log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-'\$status \$body_bytes_sent "\$http_referer" '
-'"\$http_user_agent" "\$http_x_forwarded_for"';
-
-access_log /var/log/nginx/access.log main;
-sendfile on;
-tcp_nopush on;
-tcp_nodelay on;
-keepalive_timeout 65;
-types_hash_max_size 2048;
-include /etc/nginx/conf.d/*.conf;
-}
-EOL
-# Create a separate NGINX configuration file
-sudo tee /etc/nginx/conf.d/presentation-tier.conf > /dev/null <<EOL
-server {
-    listen 80;
-    server_name devopsbhargavi.xyz www.devopsbhargavi.xyz;  # Handle both non-www and www versions of the domain
-    root /usr/share/nginx/html/dist;
-    index index.html index.htm;
-
-    # Health check endpoint
-    location /health {
-        default_type text/html;
-        return 200 "<!DOCTYPE html><p>Health check endpoint</p>\n";
-    }
-
-    # Frontend route for single-page application (SPA)
-    location / {
-        try_files \$uri /index.html;
-    }
-
-    # API route - Forward to application-tier ALB
-    location /api/ {
-        # Proxy to ALB URL (Application Load Balancer)
-        proxy_pass http://$APP_TIER_ALB_URL;  # Changed: Replaced with ALB URL for routing
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOL
-
-# Restart NGINX to apply the new configuration
+# Fetch metadata token
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H
+"X-aws-ec2-metadata-token-ttl-seconds: 21600")
+# Fetch instance details using IMDSv2
+INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN"
+"http://169.254.169.254/latest/meta-data/instance-id")
+AVAILABILITY_ZONE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN"
+"http://169.254.169.254/latest/meta-data/placement/availability-zone")
+PUBLIC_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN"
+"http://169.254.169.254/latest/meta-data/public-ipv4")
+# Create a simple HTML page displaying instance details
+sudo bash -c "cat > /usr/share/nginx/html/index.html <<EOF
+<h1>Instance Details</h1>
+<p><b>Instance ID:</b> $INSTANCE_ID</p>
+<p><b>Availability Zone:</b> $AVAILABILITY_ZONE</p>
+<p><b>Public IP:</b> $PUBLIC_IP</p>
+EOF"
+# Restart NGINX to ensure changes are applied
 sudo systemctl restart nginx
