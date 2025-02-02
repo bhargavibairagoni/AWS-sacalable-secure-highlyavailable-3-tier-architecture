@@ -25,7 +25,7 @@ mkdir -p $LOG_DIR
 sudo chown -R ec2-user:ec2-user $LOG_DIR
 # Append environment variables to the .env file
 echo "LOG_DIR=$LOG_DIR" >> "$ENV_FILE"
-echo "DB_HOST=\"dev-rds-db-instance.c1au2u6sigra.us-east-1.rds.amazonaws.com\"" >> "$ENV_FILE"
+echo "DB_HOST=\"rds-db-instance.c1au2u6sigra.us-east-1.rds.amazonaws.com\"" >> "$ENV_FILE"
 echo "DB_PORT=\"3306\"" >> "$ENV_FILE"
 echo "DB_USER=\"appuser\"" >> "$ENV_FILE"
 echo "DB_PASSWORD=\"admin123\"" >> "$ENV_FILE" # Replace with actual
@@ -41,28 +41,47 @@ sudo -u ec2-user pm2 save
 
 # Install CloudWatch agent
 sudo yum install -y amazon-cloudwatch-agent
-# Create CloudWatch agent configuration
-sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json >
-/dev/null <<EOL
+if ! command -v amazon-cloudwatch-agent &> /dev/null; then
+    sudo yum install -y amazon-cloudwatch-agent
+fi
+
+# Configure CloudWatch agent
+CLOUDWATCH_CONFIG_PATH="/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json"
+
+sudo tee "$CLOUDWATCH_CONFIG_PATH" > /dev/null <<EOL
 {
-"logs": {
-"logs_collected": {
-"files": {
-"collect_list": [
-{
-"file_path": "/home/ec2-user/react-node-mysql-app/backend/logs/*.log",
-"log_group_name": "backend-node-app-logs",
-"log_stream_name": "{instance_id}",
-"timestamp_format": "%Y-%m-%d %H:%M:%S"
-}
-]
-}
-}
-}
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "$LOG_DIR/*.log",
+                        "log_group_name": "backend-node-app-logs",
+                        "log_stream_name": "{instance_id}",
+                        "timestamp_format": "%Y-%m-%d %H:%M:%S"
+                    }
+                ]
+            }
+        }
+    }
 }
 EOL
-# Start CloudWatch agent
 
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a
-fetch-config -m ec2 -c
-file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+# Ensure CloudWatch service starts on boot
+sudo systemctl enable amazon-cloudwatch-agent
+
+# Restart CloudWatch agent with new configuration
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config -m ec2 \
+    -c file:"$CLOUDWATCH_CONFIG_PATH" \
+    -s
+
+# Verify CloudWatch agent status
+sudo systemctl restart amazon-cloudwatch-agent
+sleep 5
+sudo systemctl status amazon-cloudwatch-agent --no-pager
+
+# Check IAM role permissions (ensure instance has proper permissions)
+aws sts get-caller-identity || echo "IAM role check failed. Ensure EC2 instance has CloudWatch permissions."
+
+echo "Setup complete. Application and CloudWatch monitoring should be running."
